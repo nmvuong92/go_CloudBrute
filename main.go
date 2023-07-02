@@ -3,14 +3,15 @@ package main
 // an early version of cloud brute plugin for HunterSuite.io
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+
 	engine "github.com/0xsha/cloudbrute/internal"
 	"github.com/akamensky/argparse"
 	"github.com/gookit/goutil/dump"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"io/ioutil"
-	"os"
-	"path"
 )
 
 func main() {
@@ -199,8 +200,8 @@ func main() {
 	var threads = 80
 
 	urls = []string{
-		"prubyyoucomhk-accounting.s3.amazonaws.com",
-		"sam-do-not-exist-12345.s3.amazonaws.com",
+		"yyy.s3.amazonaws.com",
+		"xxx.s3.amazonaws.com",
 	}
 	//output := engine.GenerateOutputName(*keyword)
 	engine.AsyncHTTPHead(urls, threads, *timeout, details, *output)
