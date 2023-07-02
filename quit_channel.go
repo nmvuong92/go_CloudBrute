@@ -7,7 +7,7 @@ func main() {
 	// Kênh này được sử dụng để truyền dữ liệu từ goroutine đến main goroutine (goroutine chính).
 	var ch = make(chan int)
 	// close(ch): Đóng kênh ch. Điều này cho biết không còn dữ liệu nào sẽ được gửi vào kênh này
-	// và bất kỳ lần gửi dữ liệu nào sau đó đều gây ra lỗi runtime.
+	// và bất kỳ lần gửi dữ liệu nào sau đó đều gây ra lỗi runtime.init
 	close(ch)
 
 	var ch2 = make(chan int)
