@@ -5,6 +5,7 @@ import (
 	"fmt"
 	engine "github.com/0xsha/cloudbrute/internal"
 	"github.com/akamensky/argparse"
+	"github.com/gookit/goutil/dump"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io/ioutil"
@@ -13,7 +14,6 @@ import (
 )
 
 func main() {
-
 
 	// parse arguments
 	parser := argparse.NewParser("CloudBrute", "Awesome Cloud Enumerator")
@@ -36,12 +36,6 @@ func main() {
 		&argparse.Options{
 			Required: false,
 			Help:     "force a search, check config.yaml providers list"})
-
-	threads := parser.Int("t", "threads",
-		&argparse.Options{
-			Required: false,
-			Help:     "number of threads",
-			Default:  80})
 
 	timeout := parser.Int("T", "timeout",
 		&argparse.Options{
@@ -73,7 +67,7 @@ func main() {
 	mode := parser.String("m", "mode",
 		&argparse.Options{
 			Required: false,
-			Default: "storage",
+			Default:  "storage",
 			Help:     "storage or app"})
 
 	output := parser.String("o", "output",
@@ -173,8 +167,10 @@ func main() {
 			log.Error().Err(err).Msg("IP detection failed")
 		}
 
-
 	}
+
+	dump.P(*domain, apiKey)
+	dump.P("cloud", cloud)
 
 	// Do we support the provider?
 	provider, err := engine.CheckSupportedCloud(cloud, config)
@@ -182,7 +178,7 @@ func main() {
 		log.Warn().Msg("IP detection failed")
 
 		// Detect the cloud from HTML and JavaScript source codes
-		provider, err = engine.CloudDetectHTML(*domain, config , providerPath)
+		provider, err = engine.CloudDetectHTML(*domain, config, providerPath)
 
 		if err != nil {
 
@@ -190,7 +186,6 @@ func main() {
 		}
 
 	}
-
 
 	log.Info().Msg(provider + " detected")
 
@@ -201,6 +196,12 @@ func main() {
 
 	}
 
+	var threads = 80
+
+	urls = []string{
+		"prubyyoucomhk-accounting.s3.amazonaws.com",
+		"sam-do-not-exist-12345.s3.amazonaws.com",
+	}
 	//output := engine.GenerateOutputName(*keyword)
-	engine.AsyncHTTPHead(urls, *threads, *timeout, details, *output)
+	engine.AsyncHTTPHead(urls, threads, *timeout, details, *output)
 }

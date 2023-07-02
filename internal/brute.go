@@ -1,14 +1,11 @@
 package internal
 
 import (
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/cheggaaa/pb"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/net/proxy"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,157 +16,70 @@ func HandleHTTPRequests(reqs, results chan string, quit chan int, bar *pb.Progre
 	for link := range reqs {
 
 		log.Debug().Msg(link)
-		if len(details.ProxyList) > 0 {
 
-			chosenProxy := SelectRandomItem(details.ProxyList)
+		client := http.Client{
+			Transport: &http.Transport{
+				DisableKeepAlives: true},
+		}
 
-			if details.ProxyType == "socks5" {
+		req, err := http.NewRequest("HEAD", "https://"+link, nil)
 
-				log.Debug().Msg("requesting through socks5 proxy : " + chosenProxy)
-
-				dialSocksProxy, err := proxy.SOCKS5("tcp", chosenProxy, nil, proxy.Direct)
-				socksTransport := &http.Transport{Dial: dialSocksProxy.Dial, DisableKeepAlives: true, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-
-				if err != nil {
-					continue
-				}
-
-				socksClient := &http.Client{
-					Transport: socksTransport,
-				}
-
-				req, err := http.NewRequest("HEAD", "https://"+link, nil)
-
-				if err!= nil{
-					results <- "err"
-					bar.Increment()
-					continue
-				}
-
-				if len(details.RandomAgent) > 0 {
-
-					chosenAgent := SelectRandomItem(details.RandomAgent)
-					req.Header.Set("User-Agent", chosenAgent)
-
-				}
-
-				resp, err := socksClient.Do(req)
-
-				if err != nil {
-
-					log.Err(err).Msg("err")
-					results <- "err"
-					bar.Increment()
-					continue
-				}
-				bar.Increment()
-				results <- link + ":" + strconv.Itoa(resp.StatusCode)
-
-			}
-
-			if details.ProxyType == "http" {
-
-				proxyURL, _ := url.Parse("http://" + chosenProxy)
-
-				log.Debug().Msg("requesting through http proxy : " + chosenProxy)
-
-				httpProxyClient := &http.Client{
-					Transport: &http.Transport{
-						DisableKeepAlives: true,
-						TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
-						Proxy:             http.ProxyURL(proxyURL),
-					},
-				}
-
-				req, err := http.NewRequest("HEAD", "http://"+link, nil)
-
-				if err!= nil{
-					results <- "err"
-					bar.Increment()
-					continue
-				}
-
-				if len(details.RandomAgent) > 1 {
-
-					chosenAgent := SelectRandomItem(details.RandomAgent)
-					req.Header.Set("User-Agent", chosenAgent)
-					log.Debug().Msg("user-agent : " + chosenAgent)
-
-				}
-
-				resp, err := httpProxyClient.Do(req)
-
-				if err != nil {
-
-					log.Err(err).Msg("proxy error")
-
-					results <- "err"
-					bar.Increment()
-					continue
-				}
-				bar.Increment()
-				results <- link + ":" + strconv.Itoa(resp.StatusCode)
-
-			}
-
-		} else {
-
-			client := http.Client{
-				Transport: &http.Transport{
-					DisableKeepAlives: true},
-			}
-
-			req, err := http.NewRequest("HEAD", "https://"+link, nil)
-
-			if err!= nil{
-				results <- "err"
-				bar.Increment()
-				continue
-			}
-
-			if len(details.RandomAgent) > 0 {
-
-				chosenAgent := SelectRandomItem(details.RandomAgent)
-				req.Header.Set("User-Agent", chosenAgent)
-			}
-
-			resp, err := client.Do(req)
-
-			if err != nil {
-
-				results <- "err"
-				bar.Increment()
-				continue
-			}
-
-			//log.Debug().Msg(strconv.Itoa(resp.StatusCode))
-
+		if err != nil {
+			results <- "err"
 			bar.Increment()
-			results <- link + ":" + strconv.Itoa(resp.StatusCode)
+			continue
 		}
 
-		if len(reqs) == len(results) {
-			quit <- 0
+		if len(details.RandomAgent) > 0 {
+			chosenAgent := SelectRandomItem(details.RandomAgent)
+			req.Header.Set("User-Agent", chosenAgent)
 		}
 
+		resp, err := client.Do(req)
+
+		if err != nil {
+
+			results <- "err"
+			bar.Increment()
+			continue
+		}
+
+		//log.Debug().Msg(strconv.Itoa(resp.StatusCode))
+
+		bar.Increment()
+		results <- link + ":" + strconv.Itoa(resp.StatusCode)
+	}
+
+	if len(reqs) == len(results) {
+		quit <- 0
 	}
 
 }
 
 func AsyncHTTPHead(urls []string, threads int, timeout int, details RequestDetails, output string) {
-
+	//Kênh result được khởi tạo để nhận kết quả từ các yêu cầu HTTP được xử lý.
+	//Kênh reqs được khởi tạo với độ dài bằng với số lượng URL để chứa các URL cần gửi yêu cầu HTTP. Đây là một kênh có buffer.
+	//Kênh quit được khởi tạo để thông báo khi tất cả các yêu cầu HTTP đã được xử lý xong.
+	//Biến bar là một thanh tiến trình được tạo ra bằng thư viện pb để hiển thị tiến trình xử lý yêu cầu HTTP.
 	result := make(chan string)
 	reqs := make(chan string, len(urls)) // buffered
 	quit := make(chan int)
 
 	bar := pb.StartNew(len(urls))
 
+	//Một vòng lặp for được sử dụng để khởi tạo các goroutine (luồng riêng biệt) để xử lý yêu cầu HTTP.
+	//Số lượng goroutine được xác định bởi giá trị threads.
 	for i := 0; i < threads; i++ {
+		//Trong mỗi goroutine, hàm HandleHTTPRequests() được gọi để xử lý yêu cầu HTTP.
+		//Các tham số như kênh reqs, kênh result, kênh quit, thanh tiến trình bar và con trỏ &details được truyền vào.
 		go HandleHTTPRequests(reqs, result, quit, bar, &details)
 	}
 
+	//Một goroutine khác được tạo ra bằng cách sử dụng từ khóa go func() {...}()
+	//để gửi các URL từ mảng urls vào kênh reqs.
 	go func() {
 		for _, link := range urls {
+			fmt.Println(link)
 			reqs <- link
 		}
 	}()
@@ -183,34 +93,29 @@ func AsyncHTTPHead(urls []string, threads int, timeout int, details RequestDetai
 	// 400, 401 , 403  protected
 	// 302 , 301 redirect
 
+	//Sau đó, chương trình thực hiện một vòng lặp vô hạn sử dụng câu lệnh for {}
+	//và sử dụng câu lệnh select để xử lý các sự kiện từ các kênh:
 	for {
 		select {
+		//Nếu có kết quả từ kênh result, nó được nhận và kiểm tra giá trị. Nếu giá trị khác "err",
+		//chương trình phân tích và xử lý kết quả để tạo ra đầu ra tương ứng.
+		//Đầu ra được ghi vào log và được ghi vào output.
 		case res := <-result:
+			fmt.Println(res)
 			if res != "err" {
 				domain := res
 				var out, status string
+
 				if strings.Contains(res, ":") {
 					domain = strings.Split(res, ":")[0]
 					status = strings.Split(res, ":")[1]
 				}
 
 				if status == "200" {
-
-					out = fmt.Sprintf("%s: %s - %s", status,"Open", domain)
+					out = fmt.Sprintf("%s: %s - %s", status, "Open", domain)
 					log.Info().Msg(out)
-				}
-				if status == "301" || status == "302" {
-					out = fmt.Sprintf("%s: %s - %s", status,"Redirect", domain)
-					log.Warn().Msg(out)
-
-				}
-				if status == "400" || status == "401" || status == "403"{
-					out = fmt.Sprintf("%s: %s - %s",   status,"Protected" , domain)
-					log.Warn().Msg(out)
-
-				}
-				if   status == "500" || status == "502" || status == "503" {
-					out = fmt.Sprintf("%s: %s - %s",status,"Server Error", domain)
+				} else {
+					out = fmt.Sprintf("%s: %s - %s", status, "Redirect", domain)
 					log.Warn().Msg(out)
 				}
 
@@ -220,16 +125,16 @@ func AsyncHTTPHead(urls []string, threads int, timeout int, details RequestDetai
 
 			}
 
+		//Nếu sau một khoảng thời gian chờ (timeout), không có kết quả nào từ kênh result,
+		//chương trình ghi log để thông báo là "TimeOut" và tăng giá trị của thanh tiến trình bar.
 		case <-time.After(time.Duration(timeout) * time.Second):
 			log.Warn().Msg("TimeOut")
 			bar.Increment()
+
+		//Nếu nhận được thông báo từ kênh quit, chương trình cập nhật giá trị thanh tiến trình bar và kết thúc vòng lặp.
 		case <-quit:
 			bar.Set(len(urls))
 			bar.Finish()
-
-			//if len(results) >0 {
-			//	WriteResultsToFile(results , output)
-			//}
 			return
 		}
 	}
@@ -247,7 +152,6 @@ func GenerateMutatedUrls(wordListPath string, mode string, provider string, prov
 	permutations := []string{"%s-%s-%s", "%s-%s.%s", "%s-%s%s", "%s.%s-%s", "%s.%s.%s"}
 
 	var compiled []string
-
 
 	for _, env := range environments {
 
@@ -281,11 +185,10 @@ func GenerateMutatedUrls(wordListPath string, mode string, provider string, prov
 
 	var finalUrls []string
 
+	if mode == "storage" {
 
-	if mode == "storage"{
-
-		if len(providerConfig.StorageUrls) < 1 && len(providerConfig.StorageRegionUrls) < 1  {
-			return nil,errors.New("storage are not supported on :" + provider )
+		if len(providerConfig.StorageUrls) < 1 && len(providerConfig.StorageRegionUrls) < 1 {
+			return nil, errors.New("storage are not supported on :" + provider)
 		}
 
 		if len(providerConfig.StorageUrls) > 0 {
@@ -298,34 +201,25 @@ func GenerateMutatedUrls(wordListPath string, mode string, provider string, prov
 			}
 		}
 
-
 		if len(providerConfig.StorageRegionUrls) > 0 {
 
-				for _, region := range providerConfig.Regions {
-
-					for _, regionUrl := range providerConfig.StorageRegionUrls {
-
-						for _, word := range compiled {
-
-							finalUrls = append(finalUrls, word+"."+region+"."+regionUrl)
-						}
+			for _, region := range providerConfig.Regions {
+				for _, regionUrl := range providerConfig.StorageRegionUrls {
+					for _, word := range compiled {
+						finalUrls = append(finalUrls, word+"."+region+"."+regionUrl)
 					}
 				}
-
+			}
 		}
-
 	}
 
-	if mode == "app"{
-
-		if len(providerConfig.APPUrls) < 1 && len(providerConfig.AppRegionUrls) < 1  {
-			return nil,errors.New("storage are not supported on :" + provider )
+	if mode == "app" {
+		if len(providerConfig.APPUrls) < 1 && len(providerConfig.AppRegionUrls) < 1 {
+			return nil, errors.New("storage are not supported on :" + provider)
 		}
-
 
 		if len(providerConfig.APPUrls) > 0 {
 			for _, app := range providerConfig.APPUrls {
-
 				for _, word := range compiled {
 					finalUrls = append(finalUrls, word+"."+app)
 				}
@@ -333,22 +227,15 @@ func GenerateMutatedUrls(wordListPath string, mode string, provider string, prov
 		}
 
 		if len(providerConfig.AppRegionUrls) > 0 {
-
 			for _, region := range providerConfig.Regions {
-
 				for _, regionUrl := range providerConfig.AppRegionUrls {
-
 					for _, word := range compiled {
-
 						finalUrls = append(finalUrls, word+"."+region+"."+regionUrl)
 					}
 				}
 			}
-
 		}
-
 	}
-
 
 	return finalUrls, nil
 

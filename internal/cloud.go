@@ -2,9 +2,10 @@ package internal
 
 import (
 	"errors"
+	"github.com/gookit/goutil/dump"
 	"github.com/ipinfo/go-ipinfo/ipinfo"
 	"github.com/rs/zerolog/log"
-	"io/ioutil"
+	"io"
 	"mvdan.cc/xurls/v2"
 	"net"
 	"net/http"
@@ -39,15 +40,10 @@ func CloudDetectIP(domain string, key string) (string, error) {
 	log.Debug().Msg(strings.TrimSpace(info))
 
 	info = strings.ToLower(info)
+	dump.P(info)
 
 	if strings.Contains(info, "amazon") {
 		return "amazon", nil
-	}
-	if strings.Contains(info, "linode") {
-		return "linode", nil
-	}
-	if strings.Contains(info, "digitalocean") {
-		return "digitalocean", nil
 	}
 	if strings.Contains(info, "google") {
 		return "google", nil
@@ -55,12 +51,6 @@ func CloudDetectIP(domain string, key string) (string, error) {
 
 	if strings.Contains(info, "microsoft") {
 		return "microsoft", nil
-	}
-	if strings.Contains(info, "alibaba") {
-		return "alibaba", nil
-	}
-	if strings.Contains(info, "choopa") {
-		return "vultr", nil
 	}
 
 	// CloudFlare detection if target is behind proxy it means we can't detect true provider
@@ -81,8 +71,7 @@ func CloudDetectIP(domain string, key string) (string, error) {
 
 }
 
-
-func CloudDetectHTML(domain string, c *Config , providerPath string) (string, error) {
+func CloudDetectHTML(domain string, c *Config, providerPath string) (string, error) {
 
 	if !strings.HasPrefix(domain, "https://") {
 
@@ -125,7 +114,7 @@ func CloudDetectHTML(domain string, c *Config , providerPath string) (string, er
 
 		// let's make it relaxed and not miss any possibility
 		rxRelaxed := xurls.Relaxed()
-		rep, _ := ioutil.ReadAll(resp.Body)
+		rep, _ := io.ReadAll(resp.Body)
 		rx := rxRelaxed.FindAllString(string(rep), -1)
 
 		for _, linkItem := range rx {
